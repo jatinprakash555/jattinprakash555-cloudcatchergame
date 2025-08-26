@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cloud Catcher</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body, html { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        body { font-family: 'Press Start 2P', cursive; background: linear-gradient(to bottom, #1e3a8a, #3b82f6, #a78bfa); touch-action: none; }
+        canvas { background-color: transparent; display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        .game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+        .hud-element { pointer-events: auto; }
+        .hud-text { text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        .modal { background-color: rgba(17, 24, 39, 0.9); backdrop-filter: blur(10px); pointer-events: auto; }
+        .button { transition: all 0.2s ease-in-out; display: inline-block; }
+        .button:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4), 0 4px 6px -4px rgba(99, 102, 241, 0.4); }
+        .button:active { transform: translateY(0); }
+        .button:disabled { background-color: #4b5563; cursor: not-allowed; transform: none; box-shadow: none; }
+        .heart, .star-currency { filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.5)); }
+        .buff-indicator { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.05); } }
+        .store-item-preview { border: 4px solid #4B5563; border-radius: 0.5rem; }
+        .store-item-preview.selected { border-color: #8B5CF6; }
+    </style>
+</head>
+<body class="text-white">
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="game-ui">
+        <div class="w-full mx-auto p-4 flex justify-between items-start text-center">
+            <div id="lives-container" class="flex gap-2 hud-element"></div>
+            <div class="flex flex-col items-center gap-2">
+                 <p class="text-lg md:text-xl hud-text">Score: <span id="score">0</span></p>
+                 <div id="total-stars-container" class="flex items-center gap-2 hud-text text-yellow-300"></div>
+                 <div id="buff-container" class="h-8 mt-1 flex gap-4"></div>
+            </div>
+            <div class="flex flex-col gap-2">
+                <a href="index.html" class="button bg-red-600 hover:bg-red-700 p-2 rounded-full hud-element"><i data-lucide="x" class="h-6 w-6"></i></a>
+                <button id="storeButton" class="button bg-yellow-500 hover:bg-yellow-600 p-2 rounded-full hud-element"><i data-lucide="shopping-cart" class="h-6 w-6"></i></button>
+            </div>
+        </div>
+        
+        <div id="gameOverModal" class="modal fixed inset-0 items-center justify-center p-4 rounded-lg hidden"><div class="text-center"><h2 class="text-4xl font-bold mb-4">Game Over</h2><p class="text-2xl mb-8">Final Score: <span id="finalScore">0</span></p><div class="flex flex-col sm:flex-row gap-4 justify-center"><button id="restartButton" class="button bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg text-xl">Play Again</button><a href="index.html" class="button bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg text-xl">Exit</a></div></div></div>
+        
+        <div id="storeModal" class="modal fixed inset-0 p-4 hidden flex-col items-center justify-center"><div class="w-full max-w-2xl text-center"><h2 class="text-3xl font-bold mb-4">Redeem Store</h2><div id="store-items-container" class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"></div><button id="closeStoreButton" class="button bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg text-lg">Close</button></div></div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const livesContainer = document.getElementById('lives-container');
+        const buffContainer = document.getElementById('buff-container');
+        const totalStarsContainer = document.getElementById('total-stars-container');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const finalScoreEl = document.getElementById('finalScore');
+        const restartButton = document.getElementById('restartButton');
+        const storeButton = document.getElementById('storeButton');
+        const storeModal = document.getElementById('storeModal');
+        const closeStoreButton = document.getElementById('closeStoreButton');
+        const storeItemsContainer = document.getElementById('store-items-container');
+
+        // --- Game State ---
+        let score = 0, lives = 3, gameOver = false;
+        let items = [], particles = [];
+        let scoreMultiplier = 1, spawnRate = 0.05, speedMultiplier = 0.8, scoreMilestone = 100;
+        const buffDuration = 10000;
+
+        // --- Player Data ---
+        let playerData = {
+            totalStars: 0,
+            unlockedBaskets: ['default'],
+            equippedBasket: 'default'
+        };
+
+        // --- SVGs ---
+        const basketSVGs = {
+            default: `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="30" viewBox="0 0 120 30"><path fill="#8B5CF6" d="M0 5 C0 0, 5 0, 5 0 H115 C115 0, 120 0, 120 5 V25 C120 30, 115 30, 115 30 H5 C5 30, 0 30, 0 25 Z" /><path fill="#A78BFA" d="M5 6 H115 V11 H5 Z" /><path fill="#A78BFA" d="M5 14 H115 V19 H5 Z" /></svg>`,
+            red: `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="30" viewBox="0 0 120 30"><path fill="#DC2626" d="M0 5 C0 0, 5 0, 5 0 H115 C115 0, 120 0, 120 5 V25 C120 30, 115 30, 115 30 H5 C5 30, 0 30, 0 25 Z" /><path fill="#F87171" d="M5 6 H115 V11 H5 Z" /><path fill="#F87171" d="M5 14 H115 V19 H5 Z" /></svg>`,
+            green: `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="30" viewBox="0 0 120 30"><path fill="#16A34A" d="M0 5 C0 0, 5 0, 5 0 H115 C115 0, 120 0, 120 5 V25 C120 30, 115 30, 115 30 H5 C5 30, 0 30, 0 25 Z" /><path fill="#4ADE80" d="M5 6 H115 V11 H5 Z" /><path fill="#4ADE80" d="M5 14 H115 V19 H5 Z" /></svg>`,
+        };
+        const cloudSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="50" height="30" viewBox="0 0 50 30"><path fill="white" d="M47.2,18.9c-0.2-5.3-4.6-9.5-9.9-9.5c-2.1,0-4,0.6-5.7,1.7c-1.4-3.6-5-6.2-9.2-6.2c-5.5,0-9.9,4.5-9.9,9.9 c0,0.4,0,0.7,0.1,1.1C6,15.1,1.1,20.2,1.1,26.1c0,3.3,2.7,6,6,6h34.3c3.3,0,6-2.7,6-6C47.4,23.2,47.6,20.9,47.2,18.9z"/></svg>`;
+        const starSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="yellow" stroke="orange" stroke-width="1"><path d="M12 2 L15.09 8.26 L22 9.27 L17 14.14 L18.18 21.02 L12 17.77 L5.82 21.02 L7 14.14 L2 9.27 L8.91 8.26 Z"/></svg>`;
+        const lightningSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="45" viewBox="0 0 24 24" fill="#A855F7"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>`;
+        const rockSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="35" viewBox="0 0 40 35"><path fill="#6B7280" d="M35.6,25.3c-2.1-1.2-4.5-1.9-7-1.9c-3.1,0-6.1,1.1-8.5,3.1c-2.4-2-5.4-3.1-8.5-3.1 c-2.5,0-4.9,0.7-7,1.9C1.9,23.9,0,21.3,0,18.4C0,12.1,7.2,7,16.1,7c3.6,0,6.9,1.5,9.3,3.9c2.4-2.4,5.7-3.9,9.3-3.9 C42.8,7,50,12.1,50,18.4C50,21.3,48.1,23.9,35.6,25.3z"/></svg>`;
+        const heartSVG = `<svg class="heart" xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="#F43F5E"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+        const powerUpSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24"><defs><radialGradient id="grad1" cx="50%" cy="50%" r="50%" fx="50%" fy="50%"><stop offset="0%" style="stop-color:rgb(255,255,255);stop-opacity:1" /><stop offset="100%" style="stop-color:rgb(167,139,250);stop-opacity:1" /></radialGradient></defs><circle cx="12" cy="12" r="10" fill="url(#grad1)"/><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z" fill="#8B5CF6"/><path d="M12 6l1.55 3.15 3.45.5 -2.5 2.44.59 3.41 -3.09-1.62 -3.09 1.62.59-3.41 -2.5-2.44 3.45-.5L12 6z" fill="white"/></svg>`;
+
+        // --- Image Objects ---
+        let basketImg;
+        const createImageFromSVG = (svgString) => { const img = new Image(); const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' }); img.src = URL.createObjectURL(svgBlob); return img; };
+        const cloudImg = createImageFromSVG(cloudSVG);
+        const starImg = createImageFromSVG(starSVG);
+        const lightningImg = createImageFromSVG(lightningSVG);
+        const rockImg = createImageFromSVG(rockSVG);
+        const extraHeartImg = createImageFromSVG(heartSVG);
+        const powerUpImg = createImageFromSVG(powerUpSVG);
+
+        // --- Player Object ---
+        const player = { x: 0, y: 0, baseWidth: 120, baseHeight: 30, width: 120, height: 30, dx: 0, acceleration: 1.2, friction: 0.9, maxSpeed: 10 };
+        const keys = { ArrowLeft: false, ArrowRight: false };
+
+        // --- Data Persistence ---
+        function saveData() { localStorage.setItem('cloudCatcherData', JSON.stringify(playerData)); }
+        function loadData() { const savedData = localStorage.getItem('cloudCatcherData'); if (savedData) { playerData = JSON.parse(savedData); } updateTotalStarsUI(); setBasket(playerData.equippedBasket); }
+
+        // --- Game Setup & Loop ---
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; player.x = canvas.width / 2 - player.width / 2; player.y = canvas.height - player.height - 20; }
+        
+        function createItem() {
+            const itemPool = [
+                { type: 'cloud', image: cloudImg, points: 1, action: 'score', speed: 2, width: 50, height: 30 },
+                { type: 'star', image: starImg, points: 5, action: 'star', speed: 3, width: 40, height: 40 },
+                { type: 'lightning', image: lightningImg, points: 1, action: 'life', speed: 4, width: 30, height: 45 },
+                { type: 'rock', image: rockImg, points: 1, action: 'life', speed: 3.5, width: 40, height: 35 },
+                { type: 'extraHeart', image: extraHeartImg, points: 1, action: 'addLife', speed: 4, width: 30, height: 30 },
+                { type: 'powerUp', image: powerUpImg, points: 0, action: 'buff', speed: 3, width: 40, height: 40 }
+            ];
+            
+            const rand = Math.random() * 100;
+            let itemType;
+            if (rand < 60) itemType = itemPool[0];      // 60% Cloud
+            else if (rand < 75) itemType = itemPool[1]; // 15% Star (Currency)
+            else if (rand < 90) itemType = Math.random() < 0.5 ? itemPool[2] : itemPool[3]; // 15% Hazards
+            else if (rand < 95) itemType = itemPool[5]; // 5% PowerUp
+            else itemType = itemPool[4];                // 5% Heart
+
+            const finalSpeed = (itemType.speed + Math.random()) * speedMultiplier;
+            items.push({ x: Math.random() * (canvas.width - itemType.width), y: -itemType.height, ...itemType, speed: finalSpeed });
+        }
+        
+        function createParticle(x, y, color) { for (let i = 0; i < 15; i++) { particles.push({ x, y, color, radius: Math.random() * 3 + 1, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4, alpha: 1 }); } }
+        function activateBuff() { const buffs = ['scoreBooster', 'bigBasket', 'cloudFrenzy']; const randomBuff = buffs[Math.floor(Math.random() * buffs.length)]; switch(randomBuff) { case 'scoreBooster': scoreMultiplier = 2; updateBuffUI('2x Score!', buffDuration); setTimeout(() => { scoreMultiplier = 1; }, buffDuration); break; case 'bigBasket': player.width = player.baseWidth * 1.5; player.height = player.baseHeight * 1.2; updateBuffUI('Big Basket!', buffDuration); setTimeout(() => { player.width = player.baseWidth; player.height = player.baseHeight; }, buffDuration); break; case 'cloudFrenzy': spawnRate = 0.15; updateBuffUI('Cloud Frenzy!', buffDuration); setTimeout(() => { spawnRate = 0.05; }, buffDuration); break; } }
+        function updateBuffUI(text, duration) { const buffEl = document.createElement('div'); buffEl.className = 'buff-indicator bg-purple-600 text-white text-xs px-3 py-1 rounded-full hud-text'; buffEl.textContent = text; buffContainer.appendChild(buffEl); setTimeout(() => { buffEl.remove(); }, duration); }
+        
+        function update() {
+            if (gameOver) return;
+            if (score >= scoreMilestone) { speedMultiplier += 0.15; scoreMilestone += 100; }
+            if (keys.ArrowLeft) player.dx -= player.acceleration;
+            if (keys.ArrowRight) player.dx += player.acceleration;
+            if (player.dx > player.maxSpeed) player.dx = player.maxSpeed;
+            if (player.dx < -player.maxSpeed) player.dx = -player.maxSpeed;
+            player.dx *= player.friction;
+            player.x += player.dx;
+            if (player.x < 0) { player.x = 0; player.dx = 0; }
+            if (player.x > canvas.width - player.width) { player.x = canvas.width - player.width; player.dx = 0; }
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                const item = items[i];
+                item.y += item.speed;
+                if (item.y + item.height > player.y && item.y < player.y + player.height && item.x < player.x + player.width && item.x + item.width > player.x) {
+                    switch(item.action) {
+                        case 'score': score += item.points * scoreMultiplier; scoreEl.textContent = score; createParticle(item.x + item.width / 2, item.y, 'white'); break;
+                        case 'star': playerData.totalStars += item.points * scoreMultiplier; updateTotalStarsUI(); saveData(); createParticle(item.x + item.width / 2, item.y, 'yellow'); break;
+                        case 'life': lives -= item.points; drawLives(); createParticle(item.x + item.width/2, item.y, '#9CA3AF'); document.body.style.animation = 'flash 0.3s ease-out'; setTimeout(() => document.body.style.animation = '', 300); break;
+                        case 'addLife': if (lives < 5) lives += item.points; drawLives(); createParticle(item.x + item.width/2, item.y, '#F43F5E'); break;
+                        case 'buff': activateBuff(); createParticle(item.x + item.width/2, item.y, '#A78BFA'); break;
+                    }
+                    items.splice(i, 1);
+                    if (lives <= 0) endGame();
+                } else if (item.y > canvas.height) {
+                    items.splice(i, 1);
+                }
+            }
+            for(let i = particles.length - 1; i >= 0; i--) { const p = particles[i]; p.x += p.vx; p.y += p.vy; p.alpha -= 0.04; if(p.alpha <= 0) particles.splice(i, 1); }
+            if (Math.random() < spawnRate) createItem();
+        }
+
+        function draw() { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(basketImg, player.x, player.y, player.width, player.height); items.forEach(item => ctx.drawImage(item.image, item.x, item.y, item.width, item.height)); particles.forEach(p => { ctx.save(); ctx.globalAlpha = p.alpha; ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fillStyle = p.color; ctx.fill(); ctx.restore(); }); }
+        function drawLives() { livesContainer.innerHTML = ''; for (let i = 0; i < lives; i++) { livesContainer.innerHTML += heartSVG; } }
+        function gameLoop() { update(); draw(); if (!gameOver) requestAnimationFrame(gameLoop); }
+        function endGame() { gameOver = true; finalScoreEl.textContent = score; gameOverModal.style.display = 'flex'; }
+        function startGame() { gameOver = false; score = 0; lives = 3; items = []; particles = []; player.dx = 0; scoreMultiplier = 1; spawnRate = 0.05; speedMultiplier = 0.8; scoreMilestone = 100; player.width = player.baseWidth; player.height = player.baseHeight; scoreEl.textContent = '0'; buffContainer.innerHTML = ''; drawLives(); gameOverModal.style.display = 'none'; resizeCanvas(); gameLoop(); }
+
+        // --- Store Logic ---
+        const storeItems = [ { id: 'default', name: 'Default', price: 0, svg: basketSVGs.default }, { id: 'red', name: 'Crimson', price: 200, svg: basketSVGs.red }, { id: 'green', name: 'Emerald', price: 200, svg: basketSVGs.green }, ];
+        function openStore() { storeModal.style.display = 'flex'; renderStoreItems(); }
+        function closeStore() { storeModal.style.display = 'none'; }
+        function renderStoreItems() {
+            storeItemsContainer.innerHTML = '';
+            storeItems.forEach(item => {
+                const isUnlocked = playerData.unlockedBaskets.includes(item.id);
+                const isEquipped = playerData.equippedBasket === item.id;
+                const canAfford = playerData.totalStars >= item.price;
+                const itemEl = document.createElement('div');
+                itemEl.className = 'flex flex-col items-center gap-2';
+                const preview = createImageFromSVG(item.svg);
+                preview.className = `store-item-preview p-2 ${isEquipped ? 'selected' : ''}`;
+                const button = document.createElement('button');
+                button.className = 'button text-sm py-2 px-3 rounded-lg';
+                if (isEquipped) { button.textContent = 'Equipped'; button.disabled = true; }
+                else if (isUnlocked) { button.textContent = 'Equip'; button.className += ' bg-green-600 hover:bg-green-700'; button.onclick = () => equipBasket(item.id); }
+                else { button.textContent = `Buy (${item.price} Stars)`; button.className += canAfford ? ' bg-indigo-600 hover:bg-indigo-700' : ''; button.disabled = !canAfford; button.onclick = () => buyBasket(item.id, item.price); }
+                itemEl.appendChild(preview); itemEl.appendChild(button); storeItemsContainer.appendChild(itemEl);
+            });
+        }
+        function buyBasket(id, price) { if (playerData.totalStars >= price) { playerData.totalStars -= price; playerData.unlockedBaskets.push(id); equipBasket(id); saveData(); updateTotalStarsUI(); renderStoreItems(); } }
+        function equipBasket(id) { playerData.equippedBasket = id; setBasket(id); saveData(); renderStoreItems(); }
+        function setBasket(id) { basketImg = createImageFromSVG(basketSVGs[id]); }
+        function updateTotalStarsUI() { totalStarsContainer.innerHTML = `<i data-lucide="star" class="h-6 w-6 star-currency"></i> ${playerData.totalStars}`; lucide.createIcons(); }
+
+        // --- Event Listeners & Initial Load ---
+        window.addEventListener('resize', resizeCanvas);
+        document.addEventListener('keydown', e => { if (e.key in keys) keys[e.key] = true; });
+        document.addEventListener('keyup', e => { if (e.key in keys) keys[e.key] = false; });
+        restartButton.addEventListener('click', startGame);
+        storeButton.addEventListener('click', openStore);
+        closeStoreButton.addEventListener('click', closeStore);
+        let touchX = null;
+        canvas.addEventListener('touchstart', e => { if (e.touches.length > 0) touchX = e.touches[0].clientX; });
+        canvas.addEventListener('touchmove', e => { if (touchX !== null && e.touches.length > 0) { const newTouchX = e.touches[0].clientX; const rect = canvas.getBoundingClientRect(); const scaleX = canvas.width / rect.width; const deltaX = (newTouchX - touchX) * scaleX; player.x += deltaX; if (player.x < 0) player.x = 0; if (player.x > canvas.width - player.width) player.x = canvas.width - player.width; touchX = newTouchX; } });
+        canvas.addEventListener('touchend', () => { touchX = null; });
+        const style = document.createElement('style');
+        style.innerHTML = `@keyframes flash { 0% { background-color: #7f1d1d; } 100% { background-color: transparent; } }`;
+        document.head.appendChild(style);
+        
+        lucide.createIcons();
+        loadData();
+        startGame();
+    </script>
+</body>
+</html>
