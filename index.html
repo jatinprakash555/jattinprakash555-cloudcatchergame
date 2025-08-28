@@ -11,8 +11,8 @@
         body, html { height: 100%; margin: 0; padding: 0; overflow: hidden; }
         body { font-family: 'Press Start 2P', cursive; background: linear-gradient(to bottom, #1e3a8a, #3b82f6, #a78bfa); touch-action: none; }
         canvas { background-color: transparent; display: block; position: absolute; top: 0; left: 0; z-index: 1; }
-        .game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
-        .hud-element { pointer-events: auto; }
+        .game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; /* Allow clicks to pass through to canvas */ }
+        .hud-element { pointer-events: auto; /* Make buttons clickable */ }
         .hud-text { text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
         .modal { background-color: rgba(17, 24, 39, 0.9); backdrop-filter: blur(10px); pointer-events: auto; }
         .button { transition: all 0.2s ease-in-out; display: inline-block; }
@@ -39,12 +39,12 @@
                  <div id="buff-container" class="h-8 mt-1 flex gap-4"></div>
             </div>
             <div class="flex flex-col gap-2">
-                <a href="index.html" class="button bg-red-600 hover:bg-red-700 p-2 rounded-full hud-element"><i data-lucide="x" class="h-6 w-6"></i></a>
+                <a href="https://jatinprakash555.github.io/jatinprakash555-portfolio/" class="button bg-red-600 hover:bg-red-700 p-2 rounded-full hud-element"><i data-lucide="x" class="h-6 w-6"></i></a>
                 <button id="storeButton" class="button bg-yellow-500 hover:bg-yellow-600 p-2 rounded-full hud-element"><i data-lucide="shopping-cart" class="h-6 w-6"></i></button>
             </div>
         </div>
         
-        <div id="gameOverModal" class="modal fixed inset-0 items-center justify-center p-4 rounded-lg hidden"><div class="text-center"><h2 class="text-4xl font-bold mb-4">Game Over</h2><p class="text-2xl mb-8">Final Score: <span id="finalScore">0</span></p><div class="flex flex-col sm:flex-row gap-4 justify-center"><button id="restartButton" class="button bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg text-xl">Play Again</button><a href="index.html" class="button bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg text-xl">Exit</a></div></div></div>
+        <div id="gameOverModal" class="modal fixed inset-0 items-center justify-center p-4 rounded-lg hidden"><div class="text-center"><h2 class="text-4xl font-bold mb-4">Game Over</h2><p class="text-2xl mb-8">Final Score: <span id="finalScore">0</span></p><div class="flex flex-col sm:flex-row gap-4 justify-center"><button id="restartButton" class="button bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg text-xl">Play Again</button><a href="https://jatinprakash555.github.io/jatinprakash555-portfolio/" class="button bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg text-xl">Exit</a></div></div></div>
         
         <div id="storeModal" class="modal fixed inset-0 p-4 hidden flex-col items-center justify-center"><div class="w-full max-w-2xl text-center"><h2 class="text-3xl font-bold mb-4">Redeem Store</h2><div id="store-items-container" class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"></div><button id="closeStoreButton" class="button bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg text-lg">Close</button></div></div>
     </div>
